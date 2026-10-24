@@ -142,4 +142,76 @@
                 const ix = (1 - landmarks[8].x) * canvasElement.width;
                 const iy = landmarks[8].y * canvasElement.height;
                 const tx = (1 - landmarks[4].x) * canvasElement.width;
-                const ty = landmarks
+                const ty = landmarks[4].y * canvasElement.height;
+
+                const pinchDist = Math.hypot(ix - tx, iy - ty);
+                const distToOrnament = Math.hypot(ix - ornamentPos.x, iy - ornamentPos.y);
+
+                if (pinchDist < 40 && distToOrnament < 50) {
+                    isDragging = true;
+                }
+                if (isDragging) {
+                    ornamentPos.x = ix;
+                    ornamentPos.y = iy;
+                }
+                if (pinchDist >= 50) {
+                    isDragging = false;
+                }
+
+                // Draw glowing fingertip cursor
+                canvasCtx.fillStyle = '#00ffff';
+                canvasCtx.shadowColor = '#00ffff';
+                canvasCtx.shadowBlur = 10;
+                canvasCtx.beginPath();
+                canvasCtx.arc(ix, iy, 7, 0, 2 * Math.PI);
+                canvasCtx.fill();
+                canvasCtx.shadowBlur = 0;
+            }
+
+            // Draw Shiny Red Ornament Bauble with a highlight reflection
+            canvasCtx.shadowColor = '#ff0000';
+            canvasCtx.shadowBlur = 12;
+            canvasCtx.fillStyle = '#d90429';
+            canvasCtx.beginPath();
+            canvasCtx.arc(ornamentPos.x, ornamentPos.y, 24, 0, 2 * Math.PI);
+            canvasCtx.fill();
+            canvasCtx.shadowBlur = 0;
+
+            // Ornament metallic cap & hanger hook
+            canvasCtx.fillStyle = '#ffd700';
+            canvasCtx.fillRect(ornamentPos.x - 6, ornamentPos.y - 30, 12, 8);
+            canvasCtx.strokeStyle = '#ffd700';
+            canvasCtx.lineWidth = 2;
+            canvasCtx.beginPath();
+            canvasCtx.arc(ornamentPos.x, ornamentPos.y - 32, 6, Math.PI, 0, false);
+            canvasCtx.stroke();
+
+            // Glossy white reflection highlight on the bauble
+            canvasCtx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            canvasCtx.beginPath();
+            canvasCtx.arc(ornamentPos.x - 8, ornamentPos.y - 8, 5, 0, 2 * Math.PI);
+            canvasCtx.fill();
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 640,
+            height: 480
+        });
+        camera.start();
+    </script>
+</body>
+</html>
