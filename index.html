@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Virtual Christmas Tree Decorator</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <style>
+        body { margin: 0; background: #111; color: white; font-family: sans-serif; text-align: center; }
+        video { display: none; }
+        canvas { margin-top: 20px; border: 4px solid #fff; border-radius: 12px; max-width: 100%; }
+    </style>
+</head>
+<body>
+    <h1>Virtual Christmas Tree Decorator 🎄</h1>
+    <p>Pinch your thumb and index finger near the red ornament to drag it onto the tree!</p>
+    <video class="input_video"></video>
+    <canvas class="output_canvas" width="640" height="480"></canvas>
+
+    <script>
+        const videoElement = document.getElementsByClassName('input_video')[0];
+        const canvasElement = document.getElementsByClassName('output_canvas')[0];
+        const canvasCtx = canvasElement.getContext('2d');
+
+        let ornamentPos = { x: 320, y: 240 };
+        let isDragging = false;
+
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            // Draw webcam feed flipped
+            canvasCtx.scale(-1, 1);
+            canvasCtx.translate(-canvasElement.width, 0);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.restore();
+
+            // Draw Christmas Tree Outline
+            canvasCtx.strokeStyle = '#00ff00';
+            canvasCtx.lineWidth = 4;
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(320, 80);
+            canvasCtx.lineTo(180, 360);
+            canvasCtx.lineTo(460, 360);
+            canvasCtx.closePath();
+            canvasCtx.stroke();
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Index fingertip (landmark 8) and Thumb tip (landmark 4)
+                const ix = (1 - landmarks[8].x) * canvasElement.width;
+                const iy = landmarks[8].y * canvasElement.height;
+                const tx = (1 - landmarks[4].x) * canvasElement.width;
+                const ty = landmarks[4].y * canvasElement.height;
+
+                // Calculate pinch distance
+                const pinchDist = Math.hypot(ix - tx, iy - ty);
+                const distToOrnament = Math.hypot(ix - ornamentPos.x, iy - ornamentPos.y);
+
+                if (pinchDist < 40 && distToOrnament < 50) {
+                    isDragging = true;
+                }
+                if (isDragging) {
+                    ornamentPos.x = ix;
+                    ornamentPos.y = iy;
+                }
+                if (pinchDist >= 50) {
+                    isDragging = false;
+                }
+
+                // Draw fingertip cursor
+                canvasCtx.fillStyle = '#00ffff';
+                canvasCtx.beginPath();
+                canvasCtx.arc(ix, iy, 8, 0, 2 * Math.PI);
+                canvasCtx.fill();
+            }
+
+            // Draw Red Ornament Bauble
+            canvasCtx.fillStyle = '#ff0000';
+            canvasCtx.beginPath();
+            canvasCtx.arc(ornamentPos.x, ornamentPos.y, 25, 0, 2 * Math.PI);
+            canvasCtx.fill();
+            canvasCtx.strokeStyle = '#ffffff';
+            canvasCtx.lineWidth = 3;
+            canvasCtx.stroke();
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 640,
+            height: 480
+        });
+        camera.start();
+    </script>
+</body>
+</html>
