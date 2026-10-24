@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Virtual Christmas Tree Decorator 🎄</title>
+    <title>Virtual Christmas Tree & Fog Window 🎄✨</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax5/libs/tone/14.8.49/Tone.js"></script>
     <style>
         body { 
             margin: 0; 
@@ -14,20 +15,17 @@
             text-align: center; 
             overflow: hidden;
             height: 100vh;
+            width: 100vw;
         }
-        h1 { margin-top: 10px; font-size: 1.8rem; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
-        p { margin: 2px 0 10px 0; color: #a2d2ff; font-size: 0.9rem; }
         video { display: none; }
-        .canvas-container {
-            position: relative;
-            display: inline-block;
-            border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-            border: 3px solid rgba(255, 255, 255, 0.2);
-            background: #000;
+        canvas { 
+            display: block; 
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
         }
-        canvas { display: block; border-radius: 14px; }
-        
         .snowflake {
             position: absolute;
             background: #ffffff;
@@ -35,6 +33,7 @@
             opacity: 0.8;
             pointer-events: none;
             animation: fall linear infinite;
+            z-index: 10;
         }
         @keyframes fall {
             0% { transform: translateY(-10px); }
@@ -44,17 +43,9 @@
 </head>
 <body>
 
-    <h1>✨ Virtual Christmas Tree Decorator 🎄</h1>
-    <p>Pinch Thumb + Index to grab items | Show Open Palm ✋ to cycle Christmas Light modes!</p>
-    
-    <div class="canvas-container">
-        <video class="input_video"></video>
-        <canvas class="output_canvas" width="640" height="480"></canvas>
-    </div>
-
     <!-- Snow Particles -->
     <script>
-        for (let i = 0; i < 50; i++) {
+        for (let i = 0; i < 70; i++) {
             let snow = document.createElement('div');
             snow.className = 'snowflake';
             snow.style.left = Math.random() * 100 + 'vw';
@@ -62,18 +53,46 @@
             let size = Math.random() * 4 + 2;
             snow.style.width = size + 'px';
             snow.style.height = size + 'px';
-            snow.style.animationDuration = (Math.random() * 3 + 2) + 's';
+            snow.style.animationDuration = (Math.random() * 4 + 2) + 's';
             snow.style.animationDelay = (Math.random() * 5) + 's';
             document.body.appendChild(snow);
         }
     </script>
+
+    <video class="input_video"></video>
+    <canvas class="output_canvas"></canvas>
 
     <script>
         const videoElement = document.getElementsByClassName('input_video')[0];
         const canvasElement = document.getElementsByClassName('output_canvas')[0];
         const canvasCtx = canvasElement.getContext('2d');
 
-        // Tray Items definition
+        // Resize canvas to full screen automatically
+        function resizeCanvas() {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Offscreen canvas for Fog Mirror drawing persistence
+        const fogCanvas = document.createElement('canvas');
+        const fogCtx = fogCanvas.getContext('2d');
+        function initFogCanvas() {
+            fogCanvas.width = window.innerWidth;
+            fogCanvas.height = window.innerHeight;
+            fogCtx.fillStyle = 'rgba(230, 240, 255, 0.88)';
+            fogCtx.fillRect(0, 0, fogCanvas.width, fogCanvas.height);
+            
+            // Add foggy texture title on the right
+            fogCtx.fillStyle = 'rgba(100, 120, 150, 0.4)';
+            fogCtx.font = 'bold 24px sans-serif';
+            fogCtx.textAlign = 'center';
+            fogCtx.fillText("❄️ Pinch & Draw on Foggy Window ❄️", fogCanvas.width * 0.75, 80);
+        }
+        initFogCanvas();
+
+        // Tray Items
         const trayItems = [
             { id: 'star', type: 'star', color: '#ffd700', label: 'Star' },
             { id: 'red', type: 'ball', color: '#d90429', label: 'Red' },
@@ -85,98 +104,85 @@
 
         let placedOrnaments = [];
         let activeDraggedOrnament = null;
-        let activeTraySlotIndex = null;
         let isDragging = false;
-
-        // Tree Light Strings configuration
-        const lightModes = ['Twinkle', 'Fast Flash', 'Warm Glow', 'Off'];
-        let currentLightModeIndex = 0;
-        let lastPalmGestureTime = 0;
         let lightAnimTime = 0;
 
-        const lightPositions = [
-            // Top layer
-            {x: 320, y: 80}, {x: 300, y: 110}, {x: 340, y: 110}, {x: 280, y: 140}, {x: 360, y: 140},
-            // Middle layer
-            {x: 320, y: 170}, {x: 270, y: 190}, {x: 370, y: 190}, {x: 240, y: 220}, {x: 400, y: 220}, {x: 310, y: 240}, {x: 330, y: 240},
-            // Bottom layer
-            {x: 220, y: 280}, {x: 420, y: 280}, {x: 260, y: 310}, {x: 380, y: 310}, {x: 200, y: 340}, {x: 440, y: 340}, {x: 300, y: 350}, {x: 340, y: 350}
-        ];
+        // Audio synth chime using Tone.js
+        const synth = new Tone.Synth().toDestination();
+        function playChime() {
+            try {
+                synth.triggerAttackRelease("C6", "8n");
+            } catch(e) {}
+        }
+
+        const lightPositions = [];
+        function generateLights() {
+            lightPositions.length = 0;
+            const cx = window.innerWidth * 0.3;
+            const h = window.innerHeight;
+            
+            // Generate light coordinates around left side tree
+            for (let i = 0; i < 24; i++) {
+                lightPositions.push({
+                    x: cx + (Math.random() * 200 - 100),
+                    y: h * 0.2 + Math.random() * (h * 0.5)
+                });
+            }
+        }
+        generateLights();
         const lightColors = ['#ffd700', '#ff0055', '#00f0ff', '#00ff66', '#ff00ff', '#ffffff'];
 
         function drawChristmasTree(ctx, w, h) {
+            const cx = w * 0.3;
+            
             // Trunk
             ctx.fillStyle = '#5c3d2e';
-            ctx.fillRect(w / 2 - 15, h - 140, 30, 40);
+            ctx.fillRect(cx - 20, h - 180, 40, 50);
 
             // Layer 3 (Bottom)
             ctx.fillStyle = '#1b4d3e';
             ctx.beginPath();
-            ctx.moveTo(w / 2, h - 260);
-            ctx.lineTo(w / 2 - 120, h - 100);
-            ctx.lineTo(w / 2 + 120, h - 100);
+            ctx.moveTo(cx, h - 380);
+            ctx.lineTo(cx - 170, h - 150);
+            ctx.lineTo(cx + 170, h - 150);
             ctx.closePath();
             ctx.fill();
             ctx.strokeStyle = '#2d6a4f';
-            ctx.lineWidth = 4;
+            ctx.lineWidth = 5;
             ctx.stroke();
 
             // Layer 2 (Middle)
             ctx.beginPath();
-            ctx.moveTo(w / 2, h - 350);
-            ctx.lineTo(w / 2 - 90, h - 200);
-            ctx.lineTo(w / 2 + 90, h - 200);
+            ctx.moveTo(cx, h - 490);
+            ctx.lineTo(cx - 130, h - 280);
+            ctx.lineTo(cx + 130, h - 280);
             ctx.closePath();
             ctx.fill();
             ctx.stroke();
 
             // Layer 1 (Top)
             ctx.beginPath();
-            ctx.moveTo(w / 2, h - 420);
-            ctx.lineTo(w / 2 - 60, h - 300);
-            ctx.lineTo(w / 2 + 60, h - 300);
+            ctx.moveTo(cx, h - 580);
+            ctx.lineTo(cx - 90, h - 410);
+            ctx.lineTo(cx + 90, h - 410);
             ctx.closePath();
             ctx.fill();
             ctx.stroke();
         }
 
         function drawChristmasLights(ctx) {
-            const mode = lightModes[currentLightModeIndex];
-            if (mode === 'Off') return;
-
             lightAnimTime += 0.05;
-
-            // Draw string connecting lights
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            for (let i = 0; i < lightPositions.length - 1; i++) {
-                if (i === 4 || i === 11) continue; // Skip jumps between tree tiers
-                ctx.moveTo(lightPositions[i].x, lightPositions[i].y);
-                ctx.lineTo(lightPositions[i + 1].x, lightPositions[i + 1].y);
-            }
-            ctx.stroke();
-
-            // Draw individual twinkling light bulbs
             lightPositions.forEach((pos, idx) => {
                 let color = lightColors[idx % lightColors.length];
-                let brightness = 1.0;
-
-                if (mode === 'Twinkle') {
-                    brightness = (Math.sin(lightAnimTime * 3 + idx) + 1) / 2;
-                } else if (mode === 'Fast Flash') {
-                    brightness = Math.sin(lightAnimTime * 10 + idx) > 0 ? 1.0 : 0.2;
-                } else if (mode === 'Warm Glow') {
-                    brightness = 0.85;
-                }
+                let brightness = (Math.sin(lightAnimTime * 3 + idx) + 1) / 2;
 
                 ctx.save();
                 ctx.globalAlpha = brightness;
                 ctx.shadowColor = color;
-                ctx.shadowBlur = 12 * brightness;
+                ctx.shadowBlur = 14 * brightness;
                 ctx.fillStyle = color;
                 ctx.beginPath();
-                ctx.arc(pos.x, pos.y, 5, 0, 2 * Math.PI);
+                ctx.arc(pos.x, pos.y, 6, 0, 2 * Math.PI);
                 ctx.fill();
                 ctx.restore();
             });
@@ -190,7 +196,7 @@
 
             ctx.save();
             ctx.shadowColor = '#ffea00';
-            ctx.shadowBlur = 15;
+            ctx.shadowBlur = 18;
             ctx.beginPath();
             ctx.moveTo(cx, cy - outerRadius);
             for (let i = 0; i < spikes; i++) {
@@ -211,26 +217,24 @@
             ctx.restore();
         }
 
-        function drawOrnament(ctx, x, y, type, color, radius = 20) {
+        function drawOrnament(ctx, x, y, type, color, radius = 22) {
             if (type === 'star') {
-                drawStar(ctx, x, y, 5, radius * 1.1, radius * 0.5, color);
+                drawStar(ctx, x, y, 5, radius * 1.15, radius * 0.55, color);
                 return;
             }
 
             ctx.save();
             ctx.shadowColor = color;
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = 12;
             ctx.fillStyle = color;
             ctx.beginPath();
             ctx.arc(x, y, radius, 0, 2 * Math.PI);
             ctx.fill();
             ctx.shadowBlur = 0;
 
-            // Cap
             ctx.fillStyle = '#ffd700';
-            ctx.fillRect(x - 5, y - radius - 5, 10, 6);
+            ctx.fillRect(x - 6, y - radius - 6, 12, 7);
 
-            // Reflection highlight
             ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
             ctx.beginPath();
             ctx.arc(x - radius/3, y - radius/3, radius/4, 0, 2 * Math.PI);
@@ -239,148 +243,164 @@
         }
 
         function drawGestureTray(ctx, w, h) {
-            const trayY = h - 55;
-            const itemWidth = 80;
-            const startX = (w - (trayItems.length * itemWidth)) / 2;
+            const cx = w * 0.3;
+            const trayY = h - 75;
+            const itemWidth = 85;
+            const startX = cx - (trayItems.length * itemWidth) / 2;
 
-            // Tray Background
             ctx.fillStyle = 'rgba(10, 25, 47, 0.85)';
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.roundRect(startX - 15, trayY - 25, trayItems.length * itemWidth + 30, 70, 16);
+            ctx.roundRect(startX - 15, trayY - 25, trayItems.length * itemWidth + 30, 75, 16);
             ctx.fill();
             ctx.stroke();
 
-            // Render Tray Items
             trayItems.forEach((item, index) => {
                 const itemX = startX + index * itemWidth + itemWidth / 2;
-                const itemY = trayY + 5;
-
+                const itemY = trayY + 10;
                 drawOrnament(ctx, itemX, itemY, item.type, item.color, 16);
 
                 ctx.fillStyle = '#e0e1dd';
                 ctx.font = '11px sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText(item.label, itemX, itemY + 32);
+                ctx.fillText(item.label, itemX, itemY + 34);
             });
 
             return { startX, trayY, itemWidth };
         }
 
-        function isOpenPalm(landmarks) {
-            // Check if all 4 main fingertips are higher/extended relative to their PIP joints
-            const tips = [8, 12, 16, 20];
-            const pips = [6, 10, 14, 18];
-            for (let i = 0; i < tips.length; i++) {
-                if (landmarks[tips[i]].y > landmarks[pips[i]].y) {
-                    return false;
-                }
-            }
-            return true;
+        function drawClearButton(ctx, w) {
+            const bx = w * 0.75;
+            const by = 40;
+            ctx.fillStyle = 'rgba(217, 4, 41, 0.85)';
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(bx - 70, by - 20, 140, 40, 10);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText("Clear Window 🧽", bx, by + 5);
+            return { x: bx, y: by, w: 140, h: 40 };
         }
 
         function onResults(results) {
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            const w = canvasElement.width;
+            const h = canvasElement.height;
 
-            // Privacy Blur on Webcam Video Frame
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, w, h);
+
+            // Privacy blur on webcam background
             canvasCtx.scale(-1, 1);
-            canvasCtx.translate(-canvasElement.width, 0);
-            canvasCtx.filter = 'blur(16px) brightness(0.4)';
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.filter = 'none'; // Reset filter for crisp foreground graphics
+            canvasCtx.translate(-w, 0);
+            canvasCtx.filter = 'blur(16px) brightness(0.35)';
+            canvasCtx.drawImage(results.image, 0, 0, w, h);
+            canvasCtx.filter = 'none';
             canvasCtx.restore();
 
-            // Draw Christmas Tree & Twinkling Lights
-            drawChristmasTree(canvasCtx, canvasElement.width, canvasElement.height);
+            // Left Side: Christmas Tree & Lights
+            drawChristmasTree(canvasCtx, w, h);
             drawChristmasLights(canvasCtx);
+            const trayInfo = drawGestureTray(canvasCtx, w, h);
 
-            // Draw Tray
-            const trayInfo = drawGestureTray(canvasCtx, canvasElement.width, canvasElement.height);
-
-            // Draw All Placed Ornaments
             placedOrnaments.forEach(ornament => {
-                drawOrnament(canvasCtx, ornament.x, ornament.y, ornament.type, ornament.color, 18);
+                drawOrnament(canvasCtx, ornament.x, ornament.y, ornament.type, ornament.color, 20);
             });
 
-            // Hand Gesture Interaction Logic
+            // Right Side: Fog Mirror Drawing Canvas Overlay
+            canvasCtx.drawImage(fogCanvas, 0, 0);
+            const clearBtn = drawClearButton(canvasCtx, w);
+
+            // Hand Tracking Interaction
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                const ix = (1 - landmarks[8].x) * canvasElement.width;
-                const iy = landmarks[8].y * canvasElement.height;
-                const tx = (1 - landmarks[4].x) * canvasElement.width;
-                const ty = landmarks[4].y * canvasElement.height;
+                const ix = (1 - landmarks[8].x) * w;
+                const iy = landmarks[8].y * h;
+                const tx = (1 - landmarks[4].x) * w;
+                const ty = landmarks[4].y * h;
 
                 const pinchDist = Math.hypot(ix - tx, iy - ty);
 
-                // Open Palm Light Mode Gesture Trigger
-                if (isOpenPalm(landmarks)) {
-                    const now = Date.now();
-                    if (now - lastPalmGestureTime > 1500) { // Cooldown between gesture toggles
-                        currentLightModeIndex = (currentLightModeIndex + 1) % lightModes.length;
-                        lastPalmGestureTime = now;
-                    }
-                }
-
-                // Pinch-to-Grab Interaction
-                if (pinchDist < 40 && !isDragging) {
-                    // Check tray pickup
-                    trayItems.forEach((item, index) => {
-                        const slotX = trayInfo.startX + index * trayInfo.itemWidth + trayInfo.itemWidth / 2;
-                        const slotY = trayInfo.trayY + 5;
-                        if (Math.hypot(ix - slotX, iy - slotY) < 35) {
-                            isDragging = true;
-                            activeTraySlotIndex = index;
-                            activeDraggedOrnament = { x: ix, y: iy, type: item.type, color: item.color };
+                // Right Side Fog Drawing Interaction
+                if (ix > w * 0.5) {
+                    // Check Clear Button
+                    if (Math.abs(ix - clearBtn.x) < clearBtn.w/2 && Math.abs(iy - clearBtn.y) < clearBtn.h/2) {
+                        if (pinchDist < 45) {
+                            initFogCanvas();
                         }
-                    });
+                    } else if (pinchDist < 45) {
+                        // Wipe / Draw on fog mirror with glowing sparkles
+                        fogCtx.save();
+                        fogCtx.globalCompositeOperation = 'destination-out';
+                        fogCtx.beginPath();
+                        fogCtx.arc(ix, iy, 30, 0, Math.PI * 2);
+                        fogCtx.fill();
+                        fogCtx.restore();
 
-                    // Check existing placed ornament pickup
-                    if (!isDragging) {
-                        for (let i = placedOrnaments.length - 1; i >= 0; i--) {
-                            if (Math.hypot(ix - placedOrnaments[i].x, iy - placedOrnaments[i].y) < 30) {
+                        // Add glowing trail particle
+                        fogCtx.fillStyle = '#00ffff';
+                        fogCtx.shadowColor = '#00ffff';
+                        fogCtx.shadowBlur = 10;
+                        fogCtx.beginPath();
+                        fogCtx.arc(ix, iy, 6, 0, Math.PI * 2);
+                        fogCtx.fill();
+                    }
+                } else {
+                    // Left Side Tree Interaction
+                    if (pinchDist < 45 && !isDragging) {
+                        trayItems.forEach((item, index) => {
+                            const slotX = trayInfo.startX + index * trayInfo.itemWidth + trayInfo.itemWidth / 2;
+                            const slotY = trayInfo.trayY + 10;
+                            if (Math.hypot(ix - slotX, iy - slotY) < 40) {
                                 isDragging = true;
-                                activeDraggedOrnament = placedOrnaments.splice(i, 1)[0];
-                                break;
+                                activeDraggedOrnament = { x: ix, y: iy, type: item.type, color: item.color };
+                            }
+                        });
+
+                        if (!isDragging) {
+                            for (let i = placedOrnaments.length - 1; i >= 0; i--) {
+                                if (Math.hypot(ix - placedOrnaments[i].x, iy - placedOrnaments[i].y) < 35) {
+                                    isDragging = true;
+                                    activeDraggedOrnament = placedOrnaments.splice(i, 1)[0];
+                                    break;
+                                }
                             }
                         }
                     }
-                }
 
-                if (isDragging && activeDraggedOrnament) {
-                    activeDraggedOrnament.x = ix;
-                    activeDraggedOrnament.y = iy;
-                }
-
-                if (pinchDist >= 50 && isDragging) {
-                    if (activeDraggedOrnament) {
-                        if (activeDraggedOrnament.y < canvasElement.height - 80) {
-                            placedOrnaments.push(activeDraggedOrnament);
-                        }
-                        activeDraggedOrnament = null;
+                    if (isDragging && activeDraggedOrnament) {
+                        activeDraggedOrnament.x = ix;
+                        activeDraggedOrnament.y = iy;
                     }
-                    isDragging = false;
+
+                    if (pinchDist >= 55 && isDragging) {
+                        if (activeDraggedOrnament) {
+                            if (activeDraggedOrnament.y < h - 90 && activeDraggedOrnament.x < w * 0.5) {
+                                placedOrnaments.push(activeDraggedOrnament);
+                                playChime();
+                            }
+                            activeDraggedOrnament = null;
+                        }
+                        isDragging = false;
+                    }
                 }
 
-                // Render Active Dragged Ornament
                 if (activeDraggedOrnament) {
-                    drawOrnament(canvasCtx, activeDraggedOrnament.x, activeDraggedOrnament.y, activeDraggedOrnament.type, activeDraggedOrnament.color, 20);
+                    drawOrnament(canvasCtx, activeDraggedOrnament.x, activeDraggedOrnament.y, activeDraggedOrnament.type, activeDraggedOrnament.color, 22);
                 }
 
-                // Render Cursor Indicators
+                // Cursor Indicator
                 canvasCtx.fillStyle = isDragging ? '#ff0055' : '#00ffff';
                 canvasCtx.beginPath();
-                canvasCtx.arc(ix, iy, 7, 0, 2 * Math.PI);
+                canvasCtx.arc(ix, iy, 8, 0, 2 * Math.PI);
                 canvasCtx.fill();
             }
-
-            // HUD Info Text Overlay
-            canvasCtx.fillStyle = '#ffd700';
-            canvasCtx.font = 'bold 13px sans-serif';
-            canvasCtx.textAlign = 'left';
-            canvasCtx.fillText(`Lights Mode: ${lightModes[currentLightModeIndex]} 💡 (Show ✋ to change)`, 20, 30);
         }
 
         const hands = new Hands({
@@ -398,8 +418,8 @@
             onFrame: async () => {
                 await hands.send({ image: videoElement });
             },
-            width: 640,
-            height: 480
+            width: 1280,
+            height: 720
         });
         camera.start();
     </script>
