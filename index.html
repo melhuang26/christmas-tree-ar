@@ -2,10 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Virtual Christmas Tree & Fog Window 🎄✨</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Christmas Tree Decorator 🎄</title>
+    <!-- MediaPipe dependencies -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax5/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Tone.js for web audio chime sound effects -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js" crossorigin="anonymous"></script>
     <style>
         body { 
             margin: 0; 
@@ -15,17 +18,31 @@
             text-align: center; 
             overflow: hidden;
             height: 100vh;
-            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
+        h1 { margin: 5px 0 0 0; font-size: 1.8rem; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+        p { margin: 2px 0 10px 0; color: #a2d2ff; font-size: 0.95rem; }
         video { display: none; }
+        .canvas-container {
+            position: relative;
+            display: inline-block;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            border: 3px solid rgba(255, 255, 255, 0.2);
+            background: #000;
+            max-width: 95vw;
+            max-height: 80vh;
+        }
         canvas { 
             display: block; 
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
+            border-radius: 14px; 
+            width: 100%;
+            height: auto;
         }
+        
         .snowflake {
             position: absolute;
             background: #ffffff;
@@ -33,19 +50,41 @@
             opacity: 0.8;
             pointer-events: none;
             animation: fall linear infinite;
-            z-index: 10;
         }
         @keyframes fall {
             0% { transform: translateY(-10px); }
             100% { transform: translateY(100vh); }
         }
+
+        .audio-prompt {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(0,0,0,0.6);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            color: #ffd700;
+            border: 1px solid rgba(255,215,0,0.4);
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
 
+    <h1>✨ Virtual Christmas Tree Decorator 🎄</h1>
+    <p>Pinch Thumb + Index finger to grab ornaments from the bottom tray & place them on the tree!</p>
+    
+    <div class="canvas-container">
+        <video class="input_video"></video>
+        <!-- Interactive 800x600 Workspace -->
+        <canvas class="output_canvas" width="800" height="600"></canvas>
+        <div class="audio-prompt">🔔 Sound FX Enabled</div>
+    </div>
+
     <!-- Snow Particles -->
     <script>
-        for (let i = 0; i < 70; i++) {
+        for (let i = 0; i < 60; i++) {
             let snow = document.createElement('div');
             snow.className = 'snowflake';
             snow.style.left = Math.random() * 100 + 'vw';
@@ -53,46 +92,62 @@
             let size = Math.random() * 4 + 2;
             snow.style.width = size + 'px';
             snow.style.height = size + 'px';
-            snow.style.animationDuration = (Math.random() * 4 + 2) + 's';
+            snow.style.animationDuration = (Math.random() * 3 + 2) + 's';
             snow.style.animationDelay = (Math.random() * 5) + 's';
             document.body.appendChild(snow);
         }
     </script>
-
-    <video class="input_video"></video>
-    <canvas class="output_canvas"></canvas>
 
     <script>
         const videoElement = document.getElementsByClassName('input_video')[0];
         const canvasElement = document.getElementsByClassName('output_canvas')[0];
         const canvasCtx = canvasElement.getContext('2d');
 
-        // Resize canvas to full screen automatically
-        function resizeCanvas() {
-            canvasElement.width = window.innerWidth;
-            canvasElement.height = window.innerHeight;
+        // Web Audio Synthesizer for Chime Placement Sounds
+        let synth = null;
+        function initAudio() {
+            if (!synth) {
+                synth = new Tone.PolySynth(Tone.Synth, {
+                    oscillator: { type: "sine" },
+                    envelope: { attack: 0.01, decay: 0.5, sustain: 0.1, release: 0.8 }
+                }).toDestination();
+                synth.volume.value = -6;
+            }
         }
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
 
-        // Offscreen canvas for Fog Mirror drawing persistence
-        const fogCanvas = document.createElement('canvas');
-        const fogCtx = fogCanvas.getContext('2d');
-        function initFogCanvas() {
-            fogCanvas.width = window.innerWidth;
-            fogCanvas.height = window.innerHeight;
-            fogCtx.fillStyle = 'rgba(230, 240, 255, 0.88)';
-            fogCtx.fillRect(0, 0, fogCanvas.width, fogCanvas.height);
-            
-            // Add foggy texture title on the right
-            fogCtx.fillStyle = 'rgba(100, 120, 150, 0.4)';
-            fogCtx.font = 'bold 24px sans-serif';
-            fogCtx.textAlign = 'center';
-            fogCtx.fillText("❄️ Pinch & Draw on Foggy Window ❄️", fogCanvas.width * 0.75, 80);
+        function playPlacementChime() {
+            try {
+                if (window.Tone && Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+                initAudio();
+                if (synth) {
+                    // Sparkling arpeggio notes
+                    const notes = ["C6", "E6", "G6", "C7"];
+                    notes.forEach((note, index) => {
+                        synth.triggerAttackRelease(note, "16n", Tone.now() + index * 0.06);
+                    });
+                }
+            } catch (e) {
+                console.log("Audio play error:", e);
+            }
         }
-        initFogCanvas();
 
-        // Tray Items
+        function playPickupChime() {
+            try {
+                if (window.Tone && Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+                initAudio();
+                if (synth) {
+                    synth.triggerAttackRelease("E6", "16n");
+                }
+            } catch (e) {
+                console.log("Audio play error:", e);
+            }
+        }
+
+        // Bottom Tray Items definition
         const trayItems = [
             { id: 'star', type: 'star', color: '#ffd700', label: 'Star' },
             { id: 'red', type: 'ball', color: '#d90429', label: 'Red' },
@@ -104,47 +159,32 @@
 
         let placedOrnaments = [];
         let activeDraggedOrnament = null;
+        let activeTraySlotIndex = null;
         let isDragging = false;
         let lightAnimTime = 0;
 
-        // Audio synth chime using Tone.js
-        const synth = new Tone.Synth().toDestination();
-        function playChime() {
-            try {
-                synth.triggerAttackRelease("C6", "8n");
-            } catch(e) {}
-        }
-
-        const lightPositions = [];
-        function generateLights() {
-            lightPositions.length = 0;
-            const cx = window.innerWidth * 0.3;
-            const h = window.innerHeight;
-            
-            // Generate light coordinates around left side tree
-            for (let i = 0; i < 24; i++) {
-                lightPositions.push({
-                    x: cx + (Math.random() * 200 - 100),
-                    y: h * 0.2 + Math.random() * (h * 0.5)
-                });
-            }
-        }
-        generateLights();
+        // Coordinates for String Lights wrapped on tree
+        const lightPositions = [
+            // Top tier
+            {x: 400, y: 120}, {x: 375, y: 160}, {x: 425, y: 160}, {x: 350, y: 200}, {x: 450, y: 200},
+            // Middle tier
+            {x: 400, y: 240}, {x: 335, y: 270}, {x: 465, y: 270}, {x: 300, y: 310}, {x: 500, y: 310}, {x: 380, y: 330}, {x: 420, y: 330},
+            // Bottom tier
+            {x: 270, y: 380}, {x: 530, y: 380}, {x: 320, y: 420}, {x: 480, y: 420}, {x: 240, y: 460}, {x: 560, y: 460}, {x: 370, y: 480}, {x: 430, y: 480}
+        ];
         const lightColors = ['#ffd700', '#ff0055', '#00f0ff', '#00ff66', '#ff00ff', '#ffffff'];
 
         function drawChristmasTree(ctx, w, h) {
-            const cx = w * 0.3;
-            
             // Trunk
             ctx.fillStyle = '#5c3d2e';
-            ctx.fillRect(cx - 20, h - 180, 40, 50);
+            ctx.fillRect(w / 2 - 20, h - 140, 40, 50);
 
             // Layer 3 (Bottom)
             ctx.fillStyle = '#1b4d3e';
             ctx.beginPath();
-            ctx.moveTo(cx, h - 380);
-            ctx.lineTo(cx - 170, h - 150);
-            ctx.lineTo(cx + 170, h - 150);
+            ctx.moveTo(w / 2, h - 340);
+            ctx.lineTo(w / 2 - 160, h - 120);
+            ctx.lineTo(w / 2 + 160, h - 120);
             ctx.closePath();
             ctx.fill();
             ctx.strokeStyle = '#2d6a4f';
@@ -153,18 +193,18 @@
 
             // Layer 2 (Middle)
             ctx.beginPath();
-            ctx.moveTo(cx, h - 490);
-            ctx.lineTo(cx - 130, h - 280);
-            ctx.lineTo(cx + 130, h - 280);
+            ctx.moveTo(w / 2, h - 450);
+            ctx.lineTo(w / 2 - 120, h - 250);
+            ctx.lineTo(w / 2 + 120, h - 250);
             ctx.closePath();
             ctx.fill();
             ctx.stroke();
 
             // Layer 1 (Top)
             ctx.beginPath();
-            ctx.moveTo(cx, h - 580);
-            ctx.lineTo(cx - 90, h - 410);
-            ctx.lineTo(cx + 90, h - 410);
+            ctx.moveTo(w / 2, h - 530);
+            ctx.lineTo(w / 2 - 80, h - 370);
+            ctx.lineTo(w / 2 + 80, h - 370);
             ctx.closePath();
             ctx.fill();
             ctx.stroke();
@@ -172,6 +212,19 @@
 
         function drawChristmasLights(ctx) {
             lightAnimTime += 0.05;
+
+            // Connecting wire string
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            for (let i = 0; i < lightPositions.length - 1; i++) {
+                if (i === 4 || i === 11) continue; 
+                ctx.moveTo(lightPositions[i].x, lightPositions[i].y);
+                ctx.lineTo(lightPositions[i + 1].x, lightPositions[i + 1].y);
+            }
+            ctx.stroke();
+
+            // Glowing light bulbs
             lightPositions.forEach((pos, idx) => {
                 let color = lightColors[idx % lightColors.length];
                 let brightness = (Math.sin(lightAnimTime * 3 + idx) + 1) / 2;
@@ -179,10 +232,10 @@
                 ctx.save();
                 ctx.globalAlpha = brightness;
                 ctx.shadowColor = color;
-                ctx.shadowBlur = 14 * brightness;
+                ctx.shadowBlur = 12 * brightness;
                 ctx.fillStyle = color;
                 ctx.beginPath();
-                ctx.arc(pos.x, pos.y, 6, 0, 2 * Math.PI);
+                ctx.arc(pos.x, pos.y, 5, 0, 2 * Math.PI);
                 ctx.fill();
                 ctx.restore();
             });
@@ -232,9 +285,11 @@
             ctx.fill();
             ctx.shadowBlur = 0;
 
+            // Gold ornament top cap
             ctx.fillStyle = '#ffd700';
             ctx.fillRect(x - 6, y - radius - 6, 12, 7);
 
+            // Reflection shine
             ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
             ctx.beginPath();
             ctx.arc(x - radius/3, y - radius/3, radius/4, 0, 2 * Math.PI);
@@ -243,159 +298,119 @@
         }
 
         function drawGestureTray(ctx, w, h) {
-            const cx = w * 0.3;
-            const trayY = h - 75;
-            const itemWidth = 85;
-            const startX = cx - (trayItems.length * itemWidth) / 2;
+            const trayY = h - 65;
+            const itemWidth = 95;
+            const startX = (w - (trayItems.length * itemWidth)) / 2;
 
+            // Tray Container Box
             ctx.fillStyle = 'rgba(10, 25, 47, 0.85)';
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.roundRect(startX - 15, trayY - 25, trayItems.length * itemWidth + 30, 75, 16);
+            ctx.roundRect(startX - 20, trayY - 30, trayItems.length * itemWidth + 40, 80, 18);
             ctx.fill();
             ctx.stroke();
 
+            // Tray Items Rendering
             trayItems.forEach((item, index) => {
                 const itemX = startX + index * itemWidth + itemWidth / 2;
-                const itemY = trayY + 10;
-                drawOrnament(ctx, itemX, itemY, item.type, item.color, 16);
+                const itemY = trayY + 8;
+
+                drawOrnament(ctx, itemX, itemY, item.type, item.color, 18);
 
                 ctx.fillStyle = '#e0e1dd';
-                ctx.font = '11px sans-serif';
+                ctx.font = '12px sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText(item.label, itemX, itemY + 34);
+                ctx.fillText(item.label, itemX, itemY + 36);
             });
 
             return { startX, trayY, itemWidth };
         }
 
-        function drawClearButton(ctx, w) {
-            const bx = w * 0.75;
-            const by = 40;
-            ctx.fillStyle = 'rgba(217, 4, 41, 0.85)';
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.roundRect(bx - 70, by - 20, 140, 40, 10);
-            ctx.fill();
-            ctx.stroke();
-
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 14px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText("Clear Window 🧽", bx, by + 5);
-            return { x: bx, y: by, w: 140, h: 40 };
-        }
-
         function onResults(results) {
-            const w = canvasElement.width;
-            const h = canvasElement.height;
-
             canvasCtx.save();
-            canvasCtx.clearRect(0, 0, w, h);
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-            // Privacy blur on webcam background
+            // Privacy Blur on Webcam Video Frame
             canvasCtx.scale(-1, 1);
-            canvasCtx.translate(-w, 0);
-            canvasCtx.filter = 'blur(16px) brightness(0.35)';
-            canvasCtx.drawImage(results.image, 0, 0, w, h);
-            canvasCtx.filter = 'none';
+            canvasCtx.translate(-canvasElement.width, 0);
+            canvasCtx.filter = 'blur(16px) brightness(0.4)';
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.filter = 'none'; 
             canvasCtx.restore();
 
-            // Left Side: Christmas Tree & Lights
-            drawChristmasTree(canvasCtx, w, h);
+            // Render Tree & Twinkling String Lights
+            drawChristmasTree(canvasCtx, canvasElement.width, canvasElement.height);
             drawChristmasLights(canvasCtx);
-            const trayInfo = drawGestureTray(canvasCtx, w, h);
 
+            // Render Tray
+            const trayInfo = drawGestureTray(canvasCtx, canvasElement.width, canvasElement.height);
+
+            // Render All Placed Ornaments
             placedOrnaments.forEach(ornament => {
                 drawOrnament(canvasCtx, ornament.x, ornament.y, ornament.type, ornament.color, 20);
             });
 
-            // Right Side: Fog Mirror Drawing Canvas Overlay
-            canvasCtx.drawImage(fogCanvas, 0, 0);
-            const clearBtn = drawClearButton(canvasCtx, w);
-
-            // Hand Tracking Interaction
+            // Hand Gesture Pinch Tracking Logic
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
 
-                const ix = (1 - landmarks[8].x) * w;
-                const iy = landmarks[8].y * h;
-                const tx = (1 - landmarks[4].x) * w;
-                const ty = landmarks[4].y * h;
+                const ix = (1 - landmarks[8].x) * canvasElement.width;
+                const iy = landmarks[8].y * canvasElement.height;
+                const tx = (1 - landmarks[4].x) * canvasElement.width;
+                const ty = landmarks[4].y * canvasElement.height;
 
                 const pinchDist = Math.hypot(ix - tx, iy - ty);
 
-                // Right Side Fog Drawing Interaction
-                if (ix > w * 0.5) {
-                    // Check Clear Button
-                    if (Math.abs(ix - clearBtn.x) < clearBtn.w/2 && Math.abs(iy - clearBtn.y) < clearBtn.h/2) {
-                        if (pinchDist < 45) {
-                            initFogCanvas();
+                // Pinch-to-Grab Interaction Detection
+                if (pinchDist < 45 && !isDragging) {
+                    // Check tray item pickup
+                    trayItems.forEach((item, index) => {
+                        const slotX = trayInfo.startX + index * trayInfo.itemWidth + trayInfo.itemWidth / 2;
+                        const slotY = trayInfo.trayY + 8;
+                        if (Math.hypot(ix - slotX, iy - slotY) < 40) {
+                            isDragging = true;
+                            activeTraySlotIndex = index;
+                            activeDraggedOrnament = { x: ix, y: iy, type: item.type, color: item.color };
+                            playPickupChime();
                         }
-                    } else if (pinchDist < 45) {
-                        // Wipe / Draw on fog mirror with glowing sparkles
-                        fogCtx.save();
-                        fogCtx.globalCompositeOperation = 'destination-out';
-                        fogCtx.beginPath();
-                        fogCtx.arc(ix, iy, 30, 0, Math.PI * 2);
-                        fogCtx.fill();
-                        fogCtx.restore();
+                    });
 
-                        // Add glowing trail particle
-                        fogCtx.fillStyle = '#00ffff';
-                        fogCtx.shadowColor = '#00ffff';
-                        fogCtx.shadowBlur = 10;
-                        fogCtx.beginPath();
-                        fogCtx.arc(ix, iy, 6, 0, Math.PI * 2);
-                        fogCtx.fill();
-                    }
-                } else {
-                    // Left Side Tree Interaction
-                    if (pinchDist < 45 && !isDragging) {
-                        trayItems.forEach((item, index) => {
-                            const slotX = trayInfo.startX + index * trayInfo.itemWidth + trayInfo.itemWidth / 2;
-                            const slotY = trayInfo.trayY + 10;
-                            if (Math.hypot(ix - slotX, iy - slotY) < 40) {
+                    // Check existing placed ornament pickup
+                    if (!isDragging) {
+                        for (let i = placedOrnaments.length - 1; i >= 0; i--) {
+                            if (Math.hypot(ix - placedOrnaments[i].x, iy - placedOrnaments[i].y) < 35) {
                                 isDragging = true;
-                                activeDraggedOrnament = { x: ix, y: iy, type: item.type, color: item.color };
-                            }
-                        });
-
-                        if (!isDragging) {
-                            for (let i = placedOrnaments.length - 1; i >= 0; i--) {
-                                if (Math.hypot(ix - placedOrnaments[i].x, iy - placedOrnaments[i].y) < 35) {
-                                    isDragging = true;
-                                    activeDraggedOrnament = placedOrnaments.splice(i, 1)[0];
-                                    break;
-                                }
+                                activeDraggedOrnament = placedOrnaments.splice(i, 1)[0];
+                                playPickupChime();
+                                break;
                             }
                         }
-                    }
-
-                    if (isDragging && activeDraggedOrnament) {
-                        activeDraggedOrnament.x = ix;
-                        activeDraggedOrnament.y = iy;
-                    }
-
-                    if (pinchDist >= 55 && isDragging) {
-                        if (activeDraggedOrnament) {
-                            if (activeDraggedOrnament.y < h - 90 && activeDraggedOrnament.x < w * 0.5) {
-                                placedOrnaments.push(activeDraggedOrnament);
-                                playChime();
-                            }
-                            activeDraggedOrnament = null;
-                        }
-                        isDragging = false;
                     }
                 }
 
+                if (isDragging && activeDraggedOrnament) {
+                    activeDraggedOrnament.x = ix;
+                    activeDraggedOrnament.y = iy;
+                }
+
+                if (pinchDist >= 55 && isDragging) {
+                    if (activeDraggedOrnament) {
+                        if (activeDraggedOrnament.y < canvasElement.height - 90) {
+                            placedOrnaments.push(activeDraggedOrnament);
+                            playPlacementChime();
+                        }
+                        activeDraggedOrnament = null;
+                    }
+                    isDragging = false;
+                }
+
+                // Render Currently Dragged Ornament
                 if (activeDraggedOrnament) {
                     drawOrnament(canvasCtx, activeDraggedOrnament.x, activeDraggedOrnament.y, activeDraggedOrnament.type, activeDraggedOrnament.color, 22);
                 }
 
-                // Cursor Indicator
+                // Render Cursor Indicator Point
                 canvasCtx.fillStyle = isDragging ? '#ff0055' : '#00ffff';
                 canvasCtx.beginPath();
                 canvasCtx.arc(ix, iy, 8, 0, 2 * Math.PI);
@@ -403,6 +418,7 @@
             }
         }
 
+        // Initialize MediaPipe Hands
         const hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
@@ -414,14 +430,20 @@
         });
         hands.onResults(onResults);
 
+        // Start Webcam Feed
         const camera = new Camera(videoElement, {
             onFrame: async () => {
                 await hands.send({ image: videoElement });
             },
-            width: 1280,
-            height: 720
+            width: 800,
+            height: 600
         });
         camera.start();
+
+        // Audio Activation Listener on User Click
+        window.addEventListener('click', () => {
+            initAudio();
+        }, { once: true });
     </script>
 </body>
 </html>
